@@ -1,6 +1,6 @@
-import { MemoryStorage } from "../src/storage";
-import { Worker } from "../src/worker";
-import { BufIO } from "../src/io";
+import { MemoryStorage } from "../../src/storage";
+import { Worker } from "../../src/worker";
+import { BufIO } from "../../src/io";
 
 type RecordType = { id: number; value: string };
 
