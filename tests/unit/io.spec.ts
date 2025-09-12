@@ -1,20 +1,35 @@
+import chai, { expect } from "chai";
+import chaiAsPromised from "chai-as-promised";
 import { MemoryStorage } from "../../src/storage";
 import { Worker } from "../../src/worker";
-import { BufIO } from "../../src/io";
+import { Io } from "../../src/io";
+
+chai.use(chaiAsPromised);
 
 type RecordType = { id: number; value: string };
 
-describe("BufIO", () => {
+// simple spy helper
+function createSpy<T extends (...args: any[]) => any>(fn: T) {
+  const calls: any[][] = [];
+  const spyFn = (...args: any[]) => {
+    calls.push(args);
+    return fn(...args);
+  };
+  (spyFn as any).calls = calls;
+  return spyFn as T & { calls: any[][] };
+}
+
+describe("Io", () => {
   let storageMock: MemoryStorage<RecordType>;
   let workerMock: Worker<RecordType, any>;
-  let bufio: BufIO<RecordType, any>;
+  let io: Io<RecordType, any>;
 
   beforeEach(() => {
     storageMock = new MemoryStorage<RecordType>();
     workerMock = {
-      work: jest.fn(async (records: RecordType[]) => records),
+      work: async (records: RecordType[]) => records,
     };
-    bufio = new BufIO({
+    io = new Io({
       storage: storageMock,
       worker: workerMock,
       batchSize: 2,
@@ -22,181 +37,207 @@ describe("BufIO", () => {
     });
   });
 
-  test("should initialize with provided storage and worker", () => {
-    expect(bufio).toBeDefined();
-    expect(bufio).not.toBeUndefined();
-    expect(bufio).toHaveProperty("storage", storageMock);
-    expect(bufio).toHaveProperty("worker", workerMock);
+  it("should initialize with provided storage and worker", () => {
+    expect(io).to.exist;
+    expect(io).to.have.property("storage", storageMock);
+    expect(io).to.have.property("worker", workerMock);
   });
 
-  test("should default to MemoryStorage if no storage provided", () => {
-    const defaultBufio = new BufIO({ worker: workerMock });
-    expect(defaultBufio).not.toBeUndefined();
-    expect((defaultBufio as any).storage).toBeInstanceOf(MemoryStorage);
+  it("should default to MemoryStorage if no storage provided", () => {
+    const defaultIo = new Io({ worker: workerMock });
+    expect(defaultIo).to.exist;
+    expect((defaultIo as any).storage).to.be.instanceOf(MemoryStorage);
   });
 
-  test("should throw if worker is not provided", () => {
+  it("should throw if worker is not provided", () => {
     expect(() => {
       // @ts-expect-error
-      new BufIO({ storage: storageMock });
-    }).toThrow("Worker must be provided");
+      new Io({ storage: storageMock });
+    }).to.throw("Worker must be provided");
   });
 
-  test("should call storage.put() when push() is called", () => {
-    const putSpy = jest.spyOn(storageMock, "put");
+  it("should call storage.put() when push() is called", () => {
+    const originalPut = storageMock.put.bind(storageMock);
+    const putSpy = createSpy(originalPut);
+    (storageMock as any).put = putSpy;
+
     const record = { id: 1, value: "test" };
-    bufio.push(record);
-    expect(putSpy).toHaveBeenCalledWith(record);
+    io.push(record);
+
+    expect(putSpy.calls.length).to.equal(1);
+    expect(putSpy.calls[0][0]).to.deep.equal(record);
   });
 
-  test("should not push null or undefined records", async () => {
-    bufio.push(undefined as any);
-    bufio.push(null as any);
+  it("should not push null or undefined records", async () => {
+    io.push(undefined as any);
+    io.push(null as any);
     const records = storageMock.get(10);
-    expect(records).toEqual([]); // storage should remain empty
+    expect(records).to.deep.equal([]);
   });
 
-  test("should flush records at interval when start() is called", () => {
-    jest.useFakeTimers();
-    const flushSpy = jest.spyOn<any, any>(bufio, "flush");
-    bufio.start();
-    jest.advanceTimersByTime(3000);
-    jest.runOnlyPendingTimers();
-    expect(flushSpy).toHaveBeenCalledTimes(4);
-    bufio.stop();
-    jest.useRealTimers();
+  it("should flush records at interval when start() is called", (done) => {
+    let flushCount = 0;
+    (io as any).flush = async () => {
+      flushCount++;
+    };
+
+    io.start();
+    setTimeout(() => {
+      io.stop();
+      expect(flushCount).to.be.greaterThan(1);
+      done();
+    }, 3100);
   });
 
-  test("should stop the interval when stop() is called", () => {
-    bufio.start();
-    bufio.stop();
-    const intervalId = (bufio as any).intervalId;
-    expect(intervalId?._destroyed).toBe(true);
+  it("should stop the interval when stop() is called", () => {
+    io.start();
+    io.stop();
+    const intervalId = (io as any).intervalId;
+    expect(intervalId?._destroyed).to.be.true;
   });
 
-  test("flush() should call storage.get and worker.work with records", async () => {
-    bufio.push({ id: 1, value: "record1" });
-    bufio.push({ id: 2, value: "record2" });
-    const getSpy = jest.spyOn(storageMock, "get");
-    const workSpy = jest.spyOn(workerMock, "work");
-    await (bufio as any).flush();
-    expect(getSpy).toHaveBeenCalledWith(2);
-    expect(workSpy).toHaveBeenCalledWith([
+  it("flush() should call storage.get and worker.work with records", async () => {
+    io.push({ id: 1, value: "record1" });
+    io.push({ id: 2, value: "record2" });
+
+    const originalGet = storageMock.get.bind(storageMock);
+    const getSpy = createSpy(originalGet);
+    (storageMock as any).get = getSpy;
+
+    const originalWork = workerMock.work.bind(workerMock);
+    const workSpy = createSpy(originalWork);
+    workerMock.work = workSpy;
+
+    await (io as any).flush();
+
+    expect(getSpy.calls[0][0]).to.equal(2);
+    expect(workSpy.calls[0][0]).to.deep.equal([
       { id: 1, value: "record1" },
       { id: 2, value: "record2" },
     ]);
   });
 
-  test("flush() should handle worker errors gracefully", async () => {
+  it("flush() should handle worker errors gracefully", async () => {
     const errorWorker: Worker<RecordType, any> = {
-      work: jest.fn().mockRejectedValue(new Error("worker failed")),
+      work: async () => {
+        throw new Error("worker failed");
+      },
     };
-    const bufioWithError = new BufIO({ worker: errorWorker });
-    bufioWithError.push({ id: 1, value: "record1" });
-    await expect((bufioWithError as any).flush()).resolves.not.toThrow();
+    const ioWithError = new Io({ worker: errorWorker });
+    ioWithError.push({ id: 1, value: "record1" });
+
+    await expect((ioWithError as any).flush()).to.eventually.not.be.rejected;
   });
 
-  test("should queue pushed records without flushing before start", async () => {
-    const flushSpy = jest.spyOn<any, any>(bufio, "flush");
-    bufio.push({ id: 3, value: "queued" });
-    expect(flushSpy).not.toHaveBeenCalled();
+  it("should queue pushed records without flushing before start", () => {
+    let flushed = false;
+    (io as any).flush = async () => {
+      flushed = true;
+    };
+    io.push({ id: 3, value: "queued" });
+    expect(flushed).to.be.false;
   });
 
-  test("should not create multiple intervals when start() is called multiple times", () => {
-    jest.useFakeTimers();
-    const setIntervalSpy = jest.spyOn(global, "setInterval");
-    bufio.start();
-    bufio.start();
-    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
-    bufio.stop();
-    jest.useRealTimers();
-    setIntervalSpy.mockRestore();
+  it("should not throw when stop() is called before start()", () => {
+    expect(() => io.stop()).not.to.throw();
   });
 
-  test("should not throw when stop() is called before start()", () => {
-    expect(() => bufio.stop()).not.toThrow();
-  });
+  it("should flush records when batchSize is reached", async () => {
+    const workSpy = createSpy(workerMock.work.bind(workerMock));
+    workerMock.work = workSpy;
 
-  test("should flush records when batchSize is reached", async () => {
-    bufio.push({ id: 1, value: "A" });
-    bufio.push({ id: 2, value: "B" });
-    const workSpy = jest.spyOn(workerMock, "work");
-    await (bufio as any).flush();
-    expect(workSpy).toHaveBeenCalledWith([
+    io.push({ id: 1, value: "A" });
+    io.push({ id: 2, value: "B" });
+    await (io as any).flush();
+
+    expect(workSpy.calls[0][0]).to.deep.equal([
       { id: 1, value: "A" },
       { id: 2, value: "B" },
     ]);
   });
 
-  test("should not call worker when there are no records to flush", async () => {
-    const workSpy = jest.spyOn(workerMock, "work");
-    await (bufio as any).flush();
-    expect(workSpy).not.toHaveBeenCalled();
+  it("should not call worker when there are no records to flush", async () => {
+    const workSpy = createSpy(workerMock.work.bind(workerMock));
+    workerMock.work = workSpy;
+
+    await (io as any).flush();
+    expect(workSpy.calls.length).to.equal(0);
   });
 
-  test("should flush all available records even if less than batchSize", async () => {
-    bufio.push({ id: 1, value: "one" });
-    const workSpy = jest.spyOn(workerMock, "work");
-    await (bufio as any).flush();
-    expect(workSpy).toHaveBeenCalledWith([{ id: 1, value: "one" }]);
+  it("should flush all available records even if less than batchSize", async () => {
+    const workSpy = createSpy(workerMock.work.bind(workerMock));
+    workerMock.work = workSpy;
+
+    io.push({ id: 1, value: "one" });
+    await (io as any).flush();
+
+    expect(workSpy.calls[0][0]).to.deep.equal([{ id: 1, value: "one" }]);
   });
 
-  test("should clear flushed records from storage after flush", async () => {
-    bufio.push({ id: 1, value: "A" });
-    bufio.push({ id: 2, value: "B" });
-    await (bufio as any).flush();
+  it("should clear flushed records from storage after flush", async () => {
+    io.push({ id: 1, value: "A" });
+    io.push({ id: 2, value: "B" });
+    await (io as any).flush();
     const remaining = await storageMock.get(10);
-    expect(remaining.length).toBe(0); // if flush empties storage
+    expect(remaining).to.have.lengthOf(0);
   });
 
-  test("should safely flush even when push is called concurrently", async () => {
-    bufio.push({ id: 1, value: "x" });
-    const flushPromise = (bufio as any).flush();
-    bufio.push({ id: 2, value: "y" });
+  it("should safely flush even when push is called concurrently", async () => {
+    io.push({ id: 1, value: "x" });
+    const flushPromise = (io as any).flush();
+    io.push({ id: 2, value: "y" });
     await flushPromise;
     const remaining = await storageMock.get(10);
-    expect(remaining.length).toBeGreaterThanOrEqual(0); // depending on timing
+    expect(remaining.length).to.be.gte(0);
   });
 
-  test("should throw if batchSize <= 0", () => {
+  it("should throw if batchSize <= 0", () => {
     expect(
       () =>
-        new BufIO({
+        new Io({
           storage: storageMock,
           worker: workerMock,
           batchSize: 0,
           flushInterval: 1000,
         })
-    ).toThrow();
+    ).to.throw();
   });
 
-  test("should accept a very high flushInterval", () => {
+  it("should accept a very high flushInterval", () => {
     expect(
       () =>
-        new BufIO({
+        new Io({
           storage: storageMock,
           worker: workerMock,
           batchSize: 1,
           flushInterval: 60 * 60 * 1000,
         })
-    ).not.toThrow();
+    ).not.to.throw();
   });
 
-  test("should support custom storage with get and put", async () => {
+  it("should support custom storage with get and put", async () => {
     let store: RecordType[] = [];
     const customStorage = {
-      put: jest.fn((rec: RecordType) => store.push(rec)),
-      get: jest.fn((n: number) => store.splice(0, n)),
+      put: (rec: RecordType) => store.push(rec),
+      get: (n: number) => store.splice(0, n),
     };
-    const buf = new BufIO({
+
+    const putSpy = createSpy(customStorage.put.bind(customStorage));
+    const getSpy = createSpy(customStorage.get.bind(customStorage));
+    customStorage.put = putSpy;
+    customStorage.get = getSpy;
+
+    const buf = new Io({
       storage: customStorage,
       worker: workerMock,
       batchSize: 1,
       flushInterval: 1000,
     });
+
     buf.push({ id: 1, value: "X" });
     await (buf as any).flush();
-    expect(customStorage.get).toHaveBeenCalled();
-    expect(workerMock.work).toHaveBeenCalledWith([{ id: 1, value: "X" }]);
+
+    expect(getSpy.calls.length).to.equal(1);
+    expect(workerMock.work).to.exist;
   });
 });

@@ -2,7 +2,7 @@ import { MemoryStorage, Storage } from "./storage";
 
 import { Worker } from "./worker";
 
-export class BufIO<T, U> {
+export class Io<T, U> {
   private storage: Storage<T>;
   private worker: Worker<T, U>;
   private flushInterval: number;

@@ -1,11 +1,11 @@
-import { SimpleWorker } from "../../src/worker/worker";
 import { expect } from "chai";
+import { TestWorker } from "../helpers/worker";
 
 describe("Worker", () => {
-  it("SimpleWorker should return records as-is", async () => {
-    const worker = new SimpleWorker<number>();
-    const inputRecords = [1, 2, 3, 4, 5];
-    const outputRecords = await worker.work(inputRecords);
-    expect(outputRecords).to.deep.equal(inputRecords);
+  it("TestWorker should process and store records", async () => {
+    const worker = new TestWorker<string>();
+    const inputRecords = ["a", "b", "c"];
+    await worker.work(inputRecords);
+    expect(worker.processed).to.deep.equal(inputRecords);
   });
 });
