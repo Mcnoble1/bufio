@@ -2,7 +2,7 @@ import { MemoryStorage, Storage } from "./storage";
 
 import { Worker } from "./worker";
 
-export class Io<T, U> {
+export class IO<T, U> {
   private storage: Storage<T>;
   private worker: Worker<T, U>;
   private flushInterval: number;
@@ -30,20 +30,22 @@ export class Io<T, U> {
     this.onError = config.onError;
   }
 
-  public push(record: T) {
+  public async push(record: T) {
     if (record === null || record === undefined) return;
     this.storage.put(record);
   }
 
-  public start() {
+  public async start() {
     if (this.intervalId && !(this.intervalId as any)._destroyed === false)
       return;
     if (!this.intervalId || (this.intervalId as any)._destroyed) {
-      this.intervalId = setInterval(() => this.flush(), this.flushInterval);
+      this.intervalId = setInterval(() => {
+        this.flush();
+      }, this.flushInterval);
     }
   }
 
-  public stop() {
+  public async stop() {
     if (this.intervalId) clearInterval(this.intervalId);
   }
 

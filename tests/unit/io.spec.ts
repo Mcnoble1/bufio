@@ -2,7 +2,7 @@ import chai, { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { MemoryStorage } from "../../src/storage";
 import { Worker } from "../../src/worker";
-import { Io } from "../../src/io";
+import { IO } from "../../src/io";
 
 chai.use(chaiAsPromised);
 
@@ -19,17 +19,17 @@ function createSpy<T extends (...args: any[]) => any>(fn: T) {
   return spyFn as T & { calls: any[][] };
 }
 
-describe("Io", () => {
+describe("IO", () => {
   let storageMock: MemoryStorage<RecordType>;
   let workerMock: Worker<RecordType, any>;
-  let io: Io<RecordType, any>;
+  let io: IO<RecordType, any>;
 
   beforeEach(() => {
     storageMock = new MemoryStorage<RecordType>();
     workerMock = {
       work: async (records: RecordType[]) => records,
     };
-    io = new Io({
+    io = new IO({
       storage: storageMock,
       worker: workerMock,
       batchSize: 2,
@@ -44,15 +44,15 @@ describe("Io", () => {
   });
 
   it("should default to MemoryStorage if no storage provided", () => {
-    const defaultIo = new Io({ worker: workerMock });
-    expect(defaultIo).to.exist;
-    expect((defaultIo as any).storage).to.be.instanceOf(MemoryStorage);
+    const defaultIO = new IO({ worker: workerMock });
+    expect(defaultIO).to.exist;
+    expect((defaultIO as any).storage).to.be.instanceOf(MemoryStorage);
   });
 
   it("should throw if worker is not provided", () => {
     expect(() => {
       // @ts-expect-error
-      new Io({ storage: storageMock });
+      new IO({ storage: storageMock });
     }).to.throw("Worker must be provided");
   });
 
@@ -123,7 +123,7 @@ describe("Io", () => {
         throw new Error("worker failed");
       },
     };
-    const ioWithError = new Io({ worker: errorWorker });
+    const ioWithError = new IO({ worker: errorWorker });
     ioWithError.push({ id: 1, value: "record1" });
 
     await expect((ioWithError as any).flush()).to.eventually.not.be.rejected;
@@ -194,7 +194,7 @@ describe("Io", () => {
   it("should throw if batchSize <= 0", () => {
     expect(
       () =>
-        new Io({
+        new IO({
           storage: storageMock,
           worker: workerMock,
           batchSize: 0,
@@ -206,7 +206,7 @@ describe("Io", () => {
   it("should accept a very high flushInterval", () => {
     expect(
       () =>
-        new Io({
+        new IO({
           storage: storageMock,
           worker: workerMock,
           batchSize: 1,
@@ -227,7 +227,7 @@ describe("Io", () => {
     customStorage.put = putSpy;
     customStorage.get = getSpy;
 
-    const buf = new Io({
+    const buf = new IO({
       storage: customStorage,
       worker: workerMock,
       batchSize: 1,

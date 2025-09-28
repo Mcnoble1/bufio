@@ -1,6 +1,6 @@
 import chai, { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
-import { Io } from "../../src/io";
+import { IO } from "../../src/io";
 import { MemoryStorage } from "../../src/storage/memory";
 import { Worker } from "../../src/worker";
 import { TestWorker } from "../helpers/worker";
@@ -9,15 +9,15 @@ chai.use(chaiAsPromised);
 
 type RecordType = { id: number; value: string };
 
-describe("Io Integration", () => {
+describe("IO Integration", () => {
   let storage: MemoryStorage<RecordType>;
   let worker: TestWorker<RecordType>;
-  let io: Io<RecordType, RecordType>;
+  let io: IO<RecordType, RecordType>;
 
   beforeEach(() => {
     storage = new MemoryStorage<RecordType>();
     worker = new TestWorker();
-    io = new Io({
+    io = new IO({
       storage,
       worker,
       batchSize: 2,
@@ -93,15 +93,15 @@ describe("Io Integration", () => {
         throw new Error("worker failed");
       }
     }
-    const failingIo = new Io({
+    const failingIO = new IO({
       storage: new MemoryStorage<RecordType>(),
       worker: new FailingWorker(),
       batchSize: 2,
       flushInterval: 100,
     });
-    failingIo.push({ id: 99, value: "bad" });
+    failingIO.push({ id: 99, value: "bad" });
 
-    await expect((failingIo as any).flush()).to.be.fulfilled;
+    await expect((failingIO as any).flush()).to.be.fulfilled;
   });
 
   it("should stop flushing when stop() is called", async () => {
